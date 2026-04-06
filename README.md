@@ -291,13 +291,26 @@ To evolve this design into a larger production-grade interconnect, the following
 ---
 
 ## 7. Instructions to Run
-1. Clone the repository.
-2. Add design sources from [rtl](rtl), [rtl/uart](rtl/uart), and [fpga](fpga) into the Vivado project.
-3. Add simulation sources from [rtl/sim](rtl/sim) and [fpga/sim](fpga/sim) into the same project.
-4. To deploy on FPGA, set `top_fpga_uart_noc` from [fpga/top_fpga_uart_noc.sv](fpga/top_fpga_uart_noc.sv) as top and add [fpga/constraints/constraints.xdc](fpga/constraints/constraints.xdc).
-5. Click on _Generate Bitstream_ to complete the FPGA Design Flow and program the Artix-7 board through _Hardware Manager_.
-6. Open the HTerm Serial Terminal at `115200` Baud, configure to send/receive HEX, and transmit `A1 48 4F 57` to initiate a visual ping to Node 1.
-7. Observe the output on the receiver window, and test further by sending more such flits.
+1. Clone the repository and open it in Vivado Tcl Shell (or open Vivado GUI and use the Tcl Console).
+2. Recreate the project directly from the repository script:
+
+    ```tcl
+    cd <path-to-network-on-chip>
+    source create_project.tcl
+    ```
+
+3. Optional: override project name while sourcing the script:
+
+    ```tcl
+    source create_project.tcl -tclargs --project_name noc_build
+    ```
+
+4. Open the created project, then run synthesis/implementation and generate the bitstream.
+5. Program the Artix-7 board from _Hardware Manager_.
+6. Open HTerm Serial Terminal at `115200` Baud, configure HEX send/receive, and transmit `A1 48 4F 57` to initiate a visual ping to Node 1.
+7. Observe the returned response on the receiver window and continue testing with additional packets.
+
+**Note:** If your local folder structure differs from the original export environment used to generate [create_project.tcl](create_project.tcl), regenerate the script from your local Vivado project (or update the source paths inside the script) before sourcing.
 
 ---
 

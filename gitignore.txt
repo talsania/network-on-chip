@@ -1,0 +1,38 @@
+# Generic
+*.elf
+*.hex
+*.bin
+*.eep
+*.lss
+*.map
+*.sym
+build/
+.build/
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Vivado generated files
+*.jou
+*.log
+*.str
+*.mif
+*.xpr
+*.xsa
+*.pb
+*.dcp
+*.rpt
+*.xml
+*.html
+*.vds
+*.wdb
+*.wcfg
+*.ltx
+vivado*/
+.Xil/
+proj*/
+# !*.bit
