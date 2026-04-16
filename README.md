@@ -17,7 +17,7 @@ The primary objective is to provide a scalable interconnect fabric suitable for 
 
 ---
 
-## 2. Architecture Specification
+## 2. Architecture Spec
 
 ### Top-Level Mesh Topology
 The fabric utilizes a standard 2D mesh consisting of 4 nodes. Each node contains a **Network Interface (NI)** for core-level packetization and a **5-Port Router** (Local, North, South, East, West).
@@ -175,19 +175,19 @@ The design utilizes a comprehensive SystemVerilog verification suite. Verificati
 **Simulation Output:**
 1. _NoC Top Module Test_
 
-   <img width="630" height="785" alt="top_noc" src="https://github.com/user-attachments/assets/30f07bd8-e71c-44a5-9952-5c1e9f44e7f1" />
+   <img width="2389" height="810" alt="Screenshot 2026-04-16 165553" src="https://github.com/user-attachments/assets/4eb438a7-6514-408e-9408-ead0fc3ee576" />
 
 2. _UART Standalone Loopback Test_
-  
-   <img width="542" height="548" alt="phase 1" src="https://github.com/user-attachments/assets/07c4d6e9-fb8d-4050-a5eb-b5ef802ef627" />
+   
+   <img width="2386" height="731" alt="image" src="https://github.com/user-attachments/assets/88a64336-d8ca-454b-91d6-6a105ddeff16" />
 
 3. _UART Protocol Bridge Test_
   
-   <img width="661" height="508" alt="phase 2" src="https://github.com/user-attachments/assets/69b50dc5-1811-4fc8-a5b1-dd9f3211e821" />
+   <img width="2382" height="1062" alt="image" src="https://github.com/user-attachments/assets/4950afa4-a057-4b06-95a9-73e45b81ce72" />
 
 **Data Transfer Waveform:**
 
-   <img width="1546" height="400" alt="waveform" src="https://github.com/user-attachments/assets/8892c21f-53e4-43fb-8c00-cc8d79cb6542" />
+   <img width="2384" height="923" alt="image" src="https://github.com/user-attachments/assets/46880f5c-a5a6-453b-975a-10808eaa1219" />
 
 **Note:** Each design module for NoC is tested individually, covering all edge cases for the respective module. NoC testbenches are in [rtl/sim](rtl/sim). FPGA/UART wrapper-oriented testbenches are in [fpga/sim](fpga/sim).
 
@@ -212,7 +212,7 @@ To demonstrate real-time capability, a custom **UART Protocol Bridge** was integ
 
 **Hardware Test Output (HTerm)**
 
-   <img width="1919" height="961" alt="Screenshot 2026-04-06 054844" src="https://github.com/user-attachments/assets/8b35e220-2807-44b7-8bfd-21d797360171" />
+   https://github.com/user-attachments/assets/2d53cbb1-b452-48b2-8f13-7dbbb11c311a
 
 _The hex output `B1 48 4F 57 00 03` confirms successful traversal from Node 0 to Node 1 and back._ 
 
@@ -236,20 +236,20 @@ The architecture is designed for hardware efficiency, utilizing minimal logic to
 | **FFs** | 3,656 | 126,800 | 2.88 |
 | **BRAM** | 0 | 135 | 0 |
 
-   <img width="1507" height="91" alt="util" src="https://github.com/user-attachments/assets/eb6c9b94-a5bc-4b48-93c9-bf83b5afda3c" />
+   <img width="1281" height="157" alt="image" src="https://github.com/user-attachments/assets/38795acd-35d6-4ba6-8983-9d652627a577" />
 
 ### Power-Performance Trade-offs
 
 **Total Power:** 0.127 W
 
-   <img width="792" height="437" alt="power" src="https://github.com/user-attachments/assets/a14d758a-a0e9-46ae-9809-bb9259bd4706" />
+   <img width="1095" height="612" alt="image" src="https://github.com/user-attachments/assets/214e6cb8-40e3-4969-ac47-c6b01af54d67" />
 
-**Discussion:** The purely combinational crossbar and XY routing units ensure minimal dynamic power draw by avoiding unnecessary register stages. The use of Dimension-Order Routing sacrifices some peak throughput under heavy congestion compared to adaptive routing, but significantly reduces LUT utilization and static power consumption.
+Here, the purely combinational crossbar and XY routing units ensure minimal dynamic power draw by avoiding unnecessary register stages. The use of Dimension-Order Routing sacrifices some peak throughput under heavy congestion compared to adaptive routing, but significantly reduces LUT utilization and static power consumption.
 **Discussion:** The purely combinational crossbar and XY routing units ensure minimal dynamic power draw by avoiding unnecessary register stages. The use of Dimension-Order Routing sacrifices some peak throughput under heavy congestion compared to adaptive routing, but significantly reduces LUT utilization and static power consumption.
 
 ### Throughput & Latency
    
-   <img width="1017" height="198" alt="time" src="https://github.com/user-attachments/assets/98a6923f-f648-4a42-930a-189ed40384cd" />
+   <img width="1426" height="360" alt="image" src="https://github.com/user-attachments/assets/15f3ecec-54d7-4883-8426-eb912c2f8198" />
 
 - **Clock Frequency:** 100 MHz (Timing constraints fully met).
 - **Latency:** Base 1-hop latency is 3 clock cycles (30ns).
@@ -311,9 +311,3 @@ To evolve this design into a larger production-grade interconnect, the following
 7. Observe the returned response on the receiver window and continue testing with additional packets.
 
 **Note:** If your local folder structure differs from the original export environment used to generate [create_project.tcl](create_project.tcl), regenerate the script from your local Vivado project (or update the source paths inside the script) before sourcing.
-
----
-
-Click to watch the video
-
-[<img width="600" height="300" alt="Screenshot 2026-04-06 073100" src="https://github.com/user-attachments/assets/db88dd0d-d22b-4e75-91a4-974e73622c92" />](https://drive.google.com/file/d/1MGtnVGMnL-R3wZSs0krQGpGEKp4HxZ-9/view?usp=sharing)
