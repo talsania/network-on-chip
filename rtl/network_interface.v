@@ -11,7 +11,10 @@
 module network_interface #(
     parameter DATA_WIDTH  = 34,
     parameter COORD_WIDTH = 1,  
-    parameter TS_WIDTH    = 16  // Width of latency timestamp
+    parameter TS_WIDTH    = 16,  // Width of latency time
+    parameter FLIT_TYPE_WIDTH = 2,
+    parameter PAYLOAD_WIDTH   = DATA_WIDTH - (2 * COORD_WIDTH) - FLIT_TYPE_WIDTH,
+    parameter CORE_DATA_WIDTH = PAYLOAD_WIDTH * 2 
 )(
     input  clk,
     input  rst_n,
@@ -22,15 +25,15 @@ module network_interface #(
     // Flit Layout: [Dest X | Dest Y | Flit Type (2 bits) | Payload]
     // Flit Type  : 01=Head, 10=Body, 11=Tail
 
-    input      [(DATA_WIDTH - (2*COORD_WIDTH) - 2)*2 - 1 : 0] core_tx_data,
-    input      [COORD_WIDTH-1:0]                              core_tx_dest_x,
-    input      [COORD_WIDTH-1:0]                              core_tx_dest_y,
-    input                                                     core_tx_valid,
-    output reg                                                core_tx_ready,
+    input      [CORE_DATA_WIDTH-1 : 0] core_tx_data,
+    input      [COORD_WIDTH-1:0]       core_tx_dest_x,
+    input      [COORD_WIDTH-1:0]       core_tx_dest_y,
+    input                              core_tx_valid,
+    output reg                         core_tx_ready,
 
-    output     [(DATA_WIDTH - (2*COORD_WIDTH) - 2)*2 - 1 : 0] core_rx_data,
-    output reg                                                core_rx_valid,
-    input                                                     core_rx_ready,
+    output     [CORE_DATA_WIDTH-1 : 0] core_rx_data,
+    output reg                         core_rx_valid,
+    input                              core_rx_ready,
 
     // Router Side Interface
     output reg [DATA_WIDTH-1:0] router_tx_flit,
@@ -45,10 +48,6 @@ module network_interface #(
     output reg [TS_WIDTH-1:0] latency_cycles_out,
     output reg                latency_valid
 );
-
-    localparam FLIT_TYPE_WIDTH = 2;
-    localparam PAYLOAD_WIDTH   = DATA_WIDTH - (2 * COORD_WIDTH) - FLIT_TYPE_WIDTH;
-    localparam CORE_DATA_WIDTH = PAYLOAD_WIDTH * 2; // Data spans Body and Tail flits
 
     localparam [FLIT_TYPE_WIDTH-1:0] TYPE_HEAD = 2'b01;
     localparam [FLIT_TYPE_WIDTH-1:0] TYPE_BODY = 2'b10;
@@ -138,10 +137,11 @@ module network_interface #(
     reg [1:0] rx_state;
 
     reg [CORE_DATA_WIDTH-1:0] rx_data_reg;
+    reg [TS_WIDTH-1:0]        extracted_ts; // Storage for the timestamp
     wire [FLIT_TYPE_WIDTH-1:0] rx_flit_type;
     wire [PAYLOAD_WIDTH-1:0]   rx_payload;
 
-    assign rx_flit_type = router_rx_flit[DATA_WIDTH-(2*COORD_WIDTH)-1 -: FLIT_TYPE_WIDTH];
+    assign rx_flit_type = router_rx_flit[PAYLOAD_WIDTH + FLIT_TYPE_WIDTH - 1 : PAYLOAD_WIDTH];
     assign rx_payload   = router_rx_flit[PAYLOAD_WIDTH-1 : 0];
     assign core_rx_data = rx_data_reg;
 
@@ -152,15 +152,16 @@ module network_interface #(
             core_rx_valid      <= 1'b0;
             latency_valid      <= 1'b0;
             latency_cycles_out <= 0;
+            extracted_ts       <= 0;
         end else begin
 
             case (rx_state)
                 RX_HEAD: begin
                     router_rx_ready <= 1'b1;
                     if (router_rx_valid && router_rx_ready && rx_flit_type == TYPE_HEAD) begin
-                        // Extract generation timestamp and calculate latency
-                        latency_cycles_out <= ts_counter - rx_payload[TS_WIDTH-1:0];
-                        rx_state           <= RX_BODY;
+                        // Extract generation timestamp
+                        extracted_ts <= rx_payload[TS_WIDTH-1:0];
+                        rx_state     <= RX_BODY;
                     end
                 end
 
@@ -176,6 +177,8 @@ module network_interface #(
                     if (router_rx_valid && router_rx_ready && rx_flit_type == TYPE_TAIL) begin
                         // Latch lower half of data
                         rx_data_reg[PAYLOAD_WIDTH-1 : 0] <= rx_payload;
+                        
+                        latency_cycles_out <= ts_counter - extracted_ts;
                             
                         // Packet fully reassembled, pause RX and push to core
                         router_rx_ready <= 1'b0; 

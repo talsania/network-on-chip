@@ -68,7 +68,10 @@ module mesh_fabric_noc #(
                 network_interface #(
                     .DATA_WIDTH(DATA_WIDTH), 
                     .COORD_WIDTH(COORD_WIDTH), 
-                    .TS_WIDTH(TS_WIDTH)
+                    .TS_WIDTH(TS_WIDTH),
+                    .FLIT_TYPE_WIDTH(FLIT_TYPE_WIDTH),
+                    .PAYLOAD_WIDTH(PAYLOAD_WIDTH),
+                    .CORE_DATA_WIDTH(CORE_DATA_WIDTH)
                 ) ni_inst (
                     .clk(clk), 
                     .rst_n(rst_n),

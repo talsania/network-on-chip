@@ -1,12 +1,30 @@
+// top_fpga_uart_stream_noc.sv
+//   Top-Level FPGA Wrapper for UART-to-NoC Bridge & Image Streamer
+//   - Dual-Protocol Gateway (Node 0): Parses incoming UART data, routes it 
+//     into the NoC, extracts returning NoC flits, and formats them back out to 
+//     the PC via UART.
+//   - Hardware Image Streaming: Contains an embedded 64x64 RGB Image ROM (4096 
+//     pixels). Triggered by `btn_stream`, it bypasses the UART RX and sends 
+//     the entire image directly into the NoC fabric at maximum hardware speed.
+//   - Auto-Echo Nodes (Nodes 1, 2, 3): When these nodes receive a packet, 
+//     they stamp their internal Node ID into the header and immediately 
+//     route the packet back to Node 0.
+//
+//   Payload (60-bit):
+//   - Bits [39:0] : 5-Byte Payload (RGB Data + Address, or PC Ping Data).
+//   - Bit  [40]   : is_binary flag (0 = ASCII, 1 = Binary/Image).
+//   - Bits [42:41]: Node ID.
+//   - Bits [59:43]: Zero-padding.
+
 `timescale 1ns / 1ps
 
 module top_fpga_uart_stream_noc #(
-    parameter integer CLK_FREQ      = 100_000_000,
-    parameter integer BAUD_RATE     = 115_200,
-    parameter integer PAYLOAD_BYTES = 5  // INCREASED to 5 bytes (40 bits) for RGB + Address
+    parameter CLK_FREQ      = 100_000_000,
+    parameter BAUD_RATE     = 115_200,
+    parameter PAYLOAD_BYTES = 5  // 5 bytes (40 bits) for RGB + Address
 )(
-    input  logic clk,           // 100 MHz board clock
-    input  logic rst_n,         // Active-low reset
+    input  logic clk,         
+    input  logic rst_n,       
     input  logic btn_stream,    // Button to trigger the 4096-packet image stream
     
     input  logic uart_rxd,      // UART RX (from PC)
@@ -17,12 +35,10 @@ module top_fpga_uart_stream_noc #(
     localparam DATA_WIDTH  = 34;
     localparam COORD_WIDTH = 1;
     localparam TS_WIDTH    = 16;
-    localparam CORE_DATA_W = 60; // We have 60 bits of payload capacity!
+    localparam CORE_DATA_W = 60;
     localparam NUM_NODES   = 4;
 
-    // =========================================================================
     // UART Subsystem Wires
-    // =========================================================================
     logic [7:0] rx_byte;
     logic       rx_byte_valid;
     
@@ -43,11 +59,9 @@ module top_fpga_uart_stream_noc #(
     logic       tx_ready;
 
     logic [2:0] const_payload_len;
-    assign const_payload_len = 3'd5; // Send 5 bytes per packet
+    assign const_payload_len = 3'd5; 
 
-    // =========================================================================
     // NoC Fabric Wires
-    // =========================================================================
     logic [3:0][CORE_DATA_W-1:0] core_tx_data;
     logic [3:0][COORD_WIDTH-1:0] core_tx_dest_x;
     logic [3:0][COORD_WIDTH-1:0] core_tx_dest_y;
@@ -61,9 +75,7 @@ module top_fpga_uart_stream_noc #(
     logic [3:0][TS_WIDTH-1:0]    latency_cycles;
     logic [3:0]                  latency_valid;
 
-    // =========================================================================
     // UART Instantiations
-    // =========================================================================
     uart_rx #(
         .CLK_FREQ(CLK_FREQ), .BAUD_RATE(BAUD_RATE)
     ) u_rx (
@@ -99,9 +111,7 @@ module top_fpga_uart_stream_noc #(
         .tx(uart_txd)
     );
 
-    // =========================================================================
     // NoC Instantiation
-    // =========================================================================
     mesh_fabric_noc #(
         .MESH_X(2), .MESH_Y(2), 
         .DATA_WIDTH(DATA_WIDTH), .COORD_WIDTH(COORD_WIDTH), .TS_WIDTH(TS_WIDTH)
@@ -118,7 +128,6 @@ module top_fpga_uart_stream_noc #(
     // =========================================================================
     // NODE 0 (0,0): RGB Image ROM & UART TX Injection
     // =========================================================================
-    
     logic [11:0] rom_addr;
     wire  [23:0] rom_data_out; 
     (* rom_style = "block" *) logic [23:0] image_rom [0:4095];
@@ -130,20 +139,22 @@ module top_fpga_uart_stream_noc #(
     logic inj_busy;
     
     logic btn_stream_q;
-    always_ff @(posedge clk) btn_stream_q <= btn_stream;
+    always @(posedge clk) 
+        btn_stream_q <= btn_stream;
+    
     wire start_stream = btn_stream && !btn_stream_q;
 
     // --- TX Injection (UART / ROM -> NoC) ---
-    always_ff @(posedge clk or negedge rst_n) begin
+    always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            core_tx_valid[0] <= 1'b0;
-            inj_busy         <= 1'b0;
-            streaming        <= 1'b0;
-            rom_addr         <= '0;
+            core_tx_valid[0] <= 0;
+            inj_busy         <= 0;
+            streaming        <= 0;
+            rom_addr         <= 0;
         end else begin
             if (start_stream && !streaming) begin
                 streaming <= 1'b1;
-                rom_addr  <= '0;
+                rom_addr  <= 0;
             end
 
             if (streaming && !inj_busy) begin
@@ -151,7 +162,7 @@ module top_fpga_uart_stream_noc #(
                 core_tx_dest_x[0] <= 1'b1; 
                 core_tx_dest_y[0] <= 1'b1;
                 
-                // Pack 60-bit Payload: {19-bit Pad, Bit 40: is_binary=1, Bits 39:0: Addr+RGB}
+                // 60-bit Payload: {19-bit Padded zeros, Bit 40: is_binary=1, Bits 39:0: Addr+RGB}
                 core_tx_data[0]   <= {19'd0, 1'b1, 4'h0, rom_addr, rom_data_out};
                 inj_busy          <= 1'b1;
                 
@@ -160,17 +171,17 @@ module top_fpga_uart_stream_noc #(
                 core_tx_dest_x[0] <= cmd_dest_node[0];
                 core_tx_dest_y[0] <= cmd_dest_node[1];
                 
-                // Pack 60-bit Payload: {19-bit Pad, Bit 40: cmd_is_binary, Bits 39:0: Untouched PC Ping Data}
+                // 60-bit Payload: {19-bit Padded zeros, Bit 40: cmd_is_binary, Bits 39:0: Untouched PC Ping Data}
                 core_tx_data[0]   <= {19'd0, cmd_is_binary, cmd_payload}; 
                 inj_busy          <= 1'b1;
                 
             end else if (core_tx_valid[0] && core_tx_ready[0]) begin
-                core_tx_valid[0] <= 1'b0;
-                inj_busy         <= 1'b0;
+                core_tx_valid[0] <= 0;
+                inj_busy         <= 0;
                 
                 if (streaming) begin
-                    if (rom_addr == 12'd4095) streaming <= 1'b0; 
-                    else rom_addr <= rom_addr + 1'b1;
+                    if (rom_addr == 12'd4095) streaming <= 0; 
+                    else rom_addr <= rom_addr + 1;
                 end
             end
         end
@@ -186,7 +197,7 @@ module top_fpga_uart_stream_noc #(
     assign fmt_latency   = latency_cycles[0];
 
     // =========================================================================
-    // NODES 1, 2, 3: Hardware Auto-Echo Nodes
+    // NODES 1, 2, 3: Auto-Echo Nodes
     // =========================================================================
     genvar i;
     generate
@@ -194,10 +205,10 @@ module top_fpga_uart_stream_noc #(
             logic echoing;
             assign core_rx_ready[i] = !echoing;
 
-            always_ff @(posedge clk or negedge rst_n) begin
+            always @(posedge clk or negedge rst_n) begin
                 if (!rst_n) begin
-                    core_tx_valid[i] <= 1'b0;
-                    echoing          <= 1'b0;
+                    core_tx_valid[i] <= 0;
+                    echoing          <= 0;
                 end else begin
                     if (core_rx_valid[i] && !echoing) begin
                         // Stamp Node ID at [42:41], Preserve is_binary at [40], Preserve Payload at [39:0]
