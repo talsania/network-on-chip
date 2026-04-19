@@ -1,4 +1,4 @@
-# Scalable 4-Core Mesh Network-on-Chip (NoC)
+# Scalable 4-Core Network-on-Chip (NoC)
 
 ![Build Status](https://img.shields.io/badge/Build-Passing-brightgreen)
 ![FPGA](https://img.shields.io/badge/FPGA-Artix--7-blue)
@@ -7,57 +7,75 @@
 ## 1. Overview
 This project is a hardware-oriented, FPGA-ready implementation of a scalable Network-on-Chip (NoC) architecture. It is designed as a reusable interconnect fabric for multi-core systems, with a focus on synthesis friendliness, modularity, and measurable hardware behavior.
 
-The primary objective is to provide a scalable interconnect fabric suitable for multi-core compute platforms, addressing the need for high-throughput, low-latency communication between custom accelerators or RISC-V cores.
+The primary objective is to provide a scalable interconnect fabric suitable for multi-core compute platforms, addressing the need for high-throughput, low-latency communication between high-speed custom accelerators or processor cores.
 
-- **4-core mesh NoC:** Fully parameterized 2x2 mesh topology.
+- **4-core mesh NoC:** Fully parameterized 2x2 mesh topology, can be scaled up to N-nodes by changing the parameters.
 - **Router design:** Dimension-Order Routing (XY routing) ensuring deadlock-free traversal.
 - **Basic packetization and arbitration:** 3-flit packetization (Head, Body, Tail) with 5-way Round-Robin arbitration featuring packet-locking.
 - **Latency measurement:** Hardware-level end-to-end latency timestamping and calculation.
 - **Hardware Demonstration:** Integrated UART Bridge for real-time PC-to-FPGA testing and latency visualization.
 
 ---
+## 2. Repository Layout
+- [rtl](rtl): synthesizable NoC RTL
+- [rtl/uart](rtl/uart): UART protocol blocks (`uart_tx`, `uart_rx`, `uart_cmd_parser`, `uart_resp_formatter`)
+- [rtl/sim](rtl/sim): NoC and UART integration and individual simulation testbenches
+- [fpga](fpga): Python scripts and image required for tests
+- [fpga/top](fpga/top): FPGA/UART top wrapper
+- [fpga/constraints](fpga/constraints): XDC constraints file
 
-## 2. Architecture Spec
+---
+## 3. Architecture Specifications
 
 ### Top-Level Mesh Topology
-The fabric utilizes a standard 2D mesh consisting of 4 nodes. Each node contains a **Network Interface (NI)** for core-level packetization and a **5-Port Router** (Local, North, South, East, West).
+The fabric utilizes a standard 2D mesh consisting of 4 nodes. Each node contains a **Network Interface (NI)** for core-level packetization and a **5-Port Router** (with Local, North, South, East, West ports).
 
 ```mermaid
 graph TD
-    %% Node 0
-    subgraph Node0 ["Node 0 (0,0)"]
-        C0[Core 0 + NI] <==>|Local| R0{Router 0}
+    %% TOP HALF: Cores feed DOWN into Routers
+    C0[Core 0] <==> NI0
+    subgraph Tile0 ["Network Node 0"]
+        NI0[NI 0] <-.->|Local| R0{Router 0}
     end
 
-    %% Node 1
-    subgraph Node1 ["Node 1 (1,0)"]
-        C1[Core 1 + NI] <==>|Local| R1{Router 1}
+    C1[Core 1] <==> NI1
+    subgraph Tile1 ["Network Node 1"]
+        NI1[NI 1] <-.->|Local| R1{Router 1}
     end
 
-    %% Node 2
-    subgraph Node2 ["Node 2 (0,1)"]
-        C2[Core 2 + NI] <==>|Local| R2{Router 2}
-    end
-
-    %% Node 3
-    subgraph Node3 ["Node 3 (1,1)"]
-        C3[Core 3 + NI] <==>|Local| R3{Router 3}
-    end
-
-    %% Fabric Connections
+    %% CENTER RING: Horizontal links
     R0 <==>|East/West| R1
-    R0 <==>|South/North| R2
-    R1 <==>|South/North| R3
-    R2 <==>|East/West| R3
+    
+    %% CENTER RING: Vertical links
+    R0 <==>|North/South| R2
+    R1 <==>|North/South| R3
 
+    %% CENTER RING: Horizontal links
+    R3 <==>|East/West| R2
+
+    %% BOTTOM HALF: Routers feed DOWN into Cores
+    subgraph Tile3 ["Network Node 3"]
+        R3{Router 3} <-.->|Local| NI3[NI 3]
+    end
+    NI3 <==> C3[Core 3]
+
+    subgraph Tile2 ["Network Node 2"]
+        R2{Router 2} <-.->|Local| NI2[NI 2]
+    end
+    NI2 <==> C2[Core 2]
+
+    %% Styling
     classDef router fill:#005288,stroke:#000,stroke-width:2px,color:#fff,rx:5px,ry:5px;
     classDef core fill:#e26d5c,stroke:#000,stroke-width:2px,color:#fff;
+    classDef ni fill:#e9c46a,stroke:#000,stroke-width:2px,color:#000,rx:3px,ry:3px;
+    
     class R0,R1,R2,R3 router;
     class C0,C1,C2,C3 core;
+    class NI0,NI1,NI2,NI3 ni;
 ```
 
 ### Router Micro-architecture
-Each router is highly modular and synthesis-ready, consisting of:
+Each router consists of:
 1. **Input Buffers:** 8-depth FIFOs with strict Valid/Ready flow control.
 2. **XY Routing Logic:** Combinational dimension-order logic.
 3. **Switch Allocator:** A 5-port matrix utilizing Round-Robin arbiters with strict packet-locking.
@@ -155,7 +173,7 @@ graph LR
 ```
 
 ### Data Path & Packet Structure
-To meet the technical expectations, the data path is strictly defined:
+The data path is also parameterized with default parameters as follows:
 - **Physical Link Width:** 34 bits (1-bit X coordinate, 1-bit Y coordinate, 2-bit Flit Type, 30-bit Payload).
 - **Packet Size:** 3 Flits (Head, Body, Tail).
 - **Core Interface Width:** 60 bits (30-bit Body + 30-bit Tail).
@@ -163,7 +181,7 @@ To meet the technical expectations, the data path is strictly defined:
 
 ---
 
-## 3. Functional Verification Results
+## 4. Functional Verification Results
 
 The design utilizes a comprehensive SystemVerilog verification suite. Verification was performed using Xilinx Vivado.
 
@@ -172,153 +190,130 @@ The design utilizes a comprehensive SystemVerilog verification suite. Verificati
 - **Fabric Tests:** 1-hop, multi-hop, simultaneous bijection, and severe 5-way port contention.
 - **Flow Control:** Upstream backpressure (FIFO full) and downstream stalls (Core busy).
 
-**Simulation Output:**
-1. _NoC Top Module Test_
+### Simulation Outputs
+1. _NoC Fabric Test_
 
-   <img width="2389" height="810" alt="Screenshot 2026-04-16 165553" src="https://github.com/user-attachments/assets/4eb438a7-6514-408e-9408-ead0fc3ee576" />
+    <img width="1852" height="393" alt="top module" src="https://github.com/user-attachments/assets/36621a83-99f0-48bb-8938-3a599a7949e0" />
 
 2. _UART Standalone Loopback Test_
    
-   <img width="2386" height="731" alt="image" src="https://github.com/user-attachments/assets/88a64336-d8ca-454b-91d6-6a105ddeff16" />
+    <img width="1862" height="372" alt="uart standalone" src="https://github.com/user-attachments/assets/cb3dfb53-71f3-43ff-91a6-563bd0731784" />
 
 3. _UART Protocol Bridge Test_
   
-   <img width="2382" height="1062" alt="image" src="https://github.com/user-attachments/assets/4950afa4-a057-4b06-95a9-73e45b81ce72" />
+    <img width="1862" height="632" alt="uart bridge" src="https://github.com/user-attachments/assets/752273be-dc1c-4c59-ac96-2ad56f248780" />
 
-**Data Transfer Waveform:**
-
-   <img width="2384" height="923" alt="image" src="https://github.com/user-attachments/assets/46880f5c-a5a6-453b-975a-10808eaa1219" />
-
-**Note:** Each design module for NoC is tested individually, covering all edge cases for the respective module. NoC testbenches are in [rtl/sim](rtl/sim). FPGA/UART wrapper-oriented testbenches are in [fpga/sim](fpga/sim).
-
-### Repository Layout
-- [rtl](rtl): synthesizable NoC RTL
-- [rtl/uart](rtl/uart): shared UART/protocol blocks (`uart_tx`, `uart_rx`, `uart_cmd_parser`, `uart_resp_formatter`)
-- [rtl/sim](rtl/sim): NoC and UART integration simulation testbenches
-- [fpga](fpga): FPGA top wrapper and board integration files
-- [fpga/constraints](fpga/constraints): XDC constraints
-- [fpga/sim](fpga/sim): wrapper-level simulation benches
+**Note:** Each design module for NoC is tested individually, covering all edge cases for the respective module. NoC testbenches are in [rtl/sim](rtl/sim) directory.
 
 ---
 
-## 4. Hardware Implementation & Real-Time Capability
+## 5. Hardware Implementation & Real-Time Capability
 
 The design is deployed on a **Xilinx Artix-7 (xc7a100tcsg324-1)** FPGA.
-To demonstrate real-time capability, a custom **UART Protocol Bridge** was integrated into Node 0.
+To demonstrate real-time capability, a custom **UART Protocol Bridge** is integrated with Node 0.
 
 ### Test A: UART Ping (HTerm)
-1. The PC sends a binary payload via UART (`0xA1` to target Node 1).
-2. Node 0 packetizes it and routes it across the physical FPGA fabric.
-3. Node 1 extracts it, embeds its Node ID, and bounces it back.
+1. The PC sends ASCII and binary payloads via UART (`0xAi` in binary & `Si` or `si` in ASCII targets Node `i`).
+2. Node 0 packetizes payload and routes it across the physical FPGA fabric.
+3. Node `i` extracts it, embeds its Node ID, and bounces it back.
 4. Node 0 ejects the packet, calculates latency, and transmits the payload + latency back to the PC via UART.
 
-**Hardware Test Output (HTerm) Hex & ASCII modes**   
+**Hardware Test Output with HEX & ASCII modes (HTerm)**   
 
 https://github.com/user-attachments/assets/b8d04f71-f63b-4fb9-8cbf-27621c76b4b4
 
-_The hex output `B1 48 4F 57 00 03` confirms successful traversal from Node 0 to Node 1 and back._
+_The hex output `B1 48 48 48 48 48 00 05` and ASCII output `[Node 1] HELLO L: 0005 cycles` confirm successful traversal from Node 0 to Node 1 and back._
 
 Here is what it represents:
-- `B1`: Response from Node 1
-- `48 4F 57`: Payload
-- `00 03`: Latency (in clock cycles)
-
-**Note:** As the custom UART module only parses hexadecimal or binary characters, _HTerm terminal software_ is used to demonstrate communication between the 4 nodes of the Network-on-Chip.
+- `B1` or `[Node 1]`: Response from Node 1
+- `48 48 48 48 48` or `HELLO`: Payload
+- `00 05` or `L: 0005 cycles`: Latency (in clock cycles)
 
 ### Test B: 64×64 RGB Image Stream
-A second top-level wrapper (`top_fpga_uart_stream_noc.sv`) extends the design with an embedded **64×64 RGB image ROM** (4,096 pixels, 24-bit color). Pressing `btn_stream` on the FPGA triggers a hardware burst that injects all 4,096 pixel packets into the NoC at maximum clock speed (100 MHz). Each packet carries a 12-bit pixel address and 24-bit RGB value. Node 3 echoes every packet back to Node 0, which serializes the recovered pixel data over UART. A companion Python script ([fpga/uart_connect.py](fpga/uart_connect.py)) reassembles the stream on the PC and renders the image using `matplotlib`.
+The top-level wrapper (`top_fpga_uart_stream_noc.sv`) also embeds a **64×64 RGB image ROM** (4,096 pixels, 24-bit color). Pressing button mapped to `btn_stream` on the FPGA triggers a hardware burst that injects all 4,096 pixel packets into the NoC at maximum clock speed (100 MHz). Each packet carries a 12-bit pixel address and 24-bit RGB value. Node 3 echoes every packet back to Node 0, which serializes the recovered pixel data over UART. A Python script [uart_connect.py](fpga/uart_connect.py) reassembles the stream on the PC and renders the image using `matplotlib`.
 
-**Hardware Test Output - 64×64 Image reconstructed over NoC**
+**Hardware Test Output - 64×64 Image transferred and reconstructed**
 
-https://github.com/user-attachments/assets/16d6b5c5-45cd-48cd-98c4-8c18223c7cf8
+https://github.com/user-attachments/assets/00715b36-8809-4058-86b9-ad8c675bad82
 
-_4,096 packets streamed through the physical NoC fabric and reconstructed pixel-perfect on the PC._
+_4,096 packets streamed through the physical NoC fabric and reconstructed pixel-perfect image on the PC._
 
 ---
 
-## 5. Performance Metrics & Resource Utilization
+## 6. Performance Metrics & Resource Utilization
 
 ### FPGA Resource Utilization
 
 The architecture is designed for hardware efficiency, utilizing minimal logic to allow maximum area for AI/ML compute cores.
+
+Below is the resource utilization of the NoC Fabric:
 | Resource | Utilization | Available | % Used |
 | -------- | ----------- | --------- | ------ |
-| **LUTs** | 1,731 | 63,400 | 2.73 |
-| **FFs** | 3,656 | 126,800 | 2.88 |
-| **BRAM** | 0 | 135 | 0 |
+| **LUTs** | 2,063 | 63,400 | 3.25 |
+| **FFs** | 4,316 | 126,800 | 3.40 |
 
-   <img width="1281" height="157" alt="image" src="https://github.com/user-attachments/assets/38795acd-35d6-4ba6-8983-9d652627a577" />
+Below is the resource utilization of Top Module containing UART + NoC:
+| Resource | Utilization | Available | % Used |
+| -------- | ----------- | --------- | ------ |
+| **LUTs** | 3,761 | 63,400 | 5.93 |
+| **FFs** | 4,719 | 126,800 | 3.72 |
 
-### Power-Performance Trade-offs
+### Power Analysis
 
-**Total Power:** 0.127 W
+**Total Power:** 0.133 W
 
-   <img width="1095" height="612" alt="image" src="https://github.com/user-attachments/assets/214e6cb8-40e3-4969-ac47-c6b01af54d67" />
+   <img width="419" height="431" alt="Power" src="https://github.com/user-attachments/assets/fca99d23-9b2a-4daa-a545-c5867f7f193d" />
 
 Here, the purely combinational crossbar and XY routing units ensure minimal dynamic power draw by avoiding unnecessary register stages. The use of Dimension-Order Routing sacrifices some peak throughput under heavy congestion compared to adaptive routing, but significantly reduces LUT utilization and static power consumption.
-**Discussion:** The purely combinational crossbar and XY routing units ensure minimal dynamic power draw by avoiding unnecessary register stages. The use of Dimension-Order Routing sacrifices some peak throughput under heavy congestion compared to adaptive routing, but significantly reduces LUT utilization and static power consumption.
+
+### Timing Analysis
+
+   <img width="1004" height="190" alt="Timing" src="https://github.com/user-attachments/assets/2389cf53-df84-4d14-b6e4-464135b0ec8b" />
+
+The timing constraints fully meet at **100 MHz clock frequency** with zero failing endpoints and +1.069 ns setup margin. Combined with the low dynamic power, these results validate that the purely combinational XY, crossbar modules are highly efficient and capable of sustaining high-speed data streams.
 
 ### Throughput & Latency
-   
-   <img width="1426" height="360" alt="image" src="https://github.com/user-attachments/assets/15f3ecec-54d7-4883-8426-eb912c2f8198" />
 
-- **Clock Frequency:** 100 MHz (Timing constraints fully met).
-- **Latency:** Base 1-hop latency is 3 clock cycles (30ns).
-- **Peak Throughput:** 100 million flits/sec per link (3.4 Gbps per directional port).
+- **Latency:** Base 1-hop latency is 5 clock cycles (50ns)
+- **Peak Throughput:** 40.8 Gbps
 
-#### Peak Throughput Calculation
-
-The peak throughput of the Network-on-Chip is calculated based on the physical data path width and the global clock frequency. 
-
-**Hardware Parameters:**
-* **Global Clock ($f_{clk}$):** 100 MHz ($10^8$ cycles/second)
-* **Physical Link Width:** 34 bits per flit
-* **Transfer Rate:** 1 flit per clock cycle per port
-
-**Base Flit Rate (Per Port):**
-Each router port can transmit one flit per clock cycle.
-> $100,000,000 \text{ cycles/sec} \times 1 \text{ flit/cycle} = \mathbf{100 \text{ Million flits/sec}}$
-
-**Raw Data Throughput (Per Port):**
-To find the raw bandwidth, we multiply the flit rate by the physical width of the flit.
-> $100,000,000 \text{ flits/sec} \times 34 \text{ bits/flit} = 3,400,000,000 \text{ bits/sec}$
-> **= 3.4 Gbps per directional port**
-
-**Total Fabric Bandwidth:**
-In a 2x2 Mesh topology, there are 4 internal bi-directional links (8 directional wires) and 4 local injection/ejection ports connecting the processing cores. The theoretical maximum data moving through the entire fabric simultaneously is:
-> $(8 \text{ Internal Links} + 4 \text{ Local Links}) \times 3.4 \text{ Gbps}$ 
-> **= 40.8 Gbps Total Peak Fabric Bandwidth**
+    #### Peak Throughput Calculation
+    
+    The peak throughput of the NoC Fabric is calculated based on the physical data path width and the global clock frequency. 
+    
+    **Hardware Parameters:**
+    * **Clock Frequency ($f_{clk}$):** 100 MHz ($10^8$ cycles/second)
+    * **Physical Link Width:** 34 bits per flit
+    * **Transfer Rate:** 1 flit per clock cycle per port
+    
+    **Base Flit Rate (Per Port):**
+    Each router port can transmit one flit per clock cycle.
+    > $100,000,000 \text{ cycles/sec} \times 1 \text{ flit/cycle} = \mathbf{100 \text{ Million flits/sec}}$
+    
+    **Raw Data Throughput (Per Port):**
+    To find the raw bandwidth, we multiply the flit rate by the physical width of the flit.
+    > $100,000,000 \text{ flits/sec} \times 34 \text{ bits/flit} = 3,400,000,000 \text{ bits/sec}$
+    > **= 3.4 Gbps per directional port**
+    
+    **Total Fabric Bandwidth:**
+    In a 2x2 Mesh topology, there are 4 internal bi-directional links (8 directional wires) and 4 local injection/ejection ports connecting the processing cores. The theoretical maximum data moving through the entire fabric simultaneously is:
+    > $(8 \text{ Internal Links} + 4 \text{ Local Links}) \times 3.4 \text{ Gbps}$ 
+    > **= 40.8 Gbps Total Peak Fabric Bandwidth**
 
 ---
-
-## 6. Scalability Roadmap 
-
-To evolve this design into a larger production-grade interconnect, the following architectural enhancements are planned:
-1. **Scalability to 8+ Cores**: Parameterize the `COORD_WIDTH` and `genvar` loops to automatically synthesize 4x4 (16 cores) or 8x8 (64 cores) topologies without modifying the underlying router micro-architecture.
-2. **Quality of Service (QoS)**: Implement Virtual Channels (VCs) within the input FIFOs to prioritize critical control packets (e.g., RISC-V interrupts) over bulk data transfers (e.g., Neural Network weight streaming).
-3. **Dynamic/Adaptive Routing**: Replace the static XY router with a minimal adaptive router (e.g., Turn Model or Odd-Even routing) to navigate around congested hotspots during heavy machine learning workloads.
-4. **Congestion Control & Power-Aware Routing**: Implement clock-gating on unused router ports and introduce source-throttling mechanisms when downstream latency timestamps exceed a critical threshold.
-
----
-
-## 7. Instructions to Run
+## 7. Instructions to Replicate
 1. Clone the repository and open it in Vivado Tcl Shell (or open Vivado GUI and use the Tcl Console).
-2. Recreate the project directly from the repository script:
+2. Recreate the project directly from the Tcl script:
 
     ```tcl
-    cd <path-to-network-on-chip>
+    cd <path-to-repository-root>
     source create_project.tcl
     ```
+    
+3. Run synthesis, implementation and generate the bitstream in the recreated project.
+4. Program the Artix-7 FPGA board from _Hardware Manager_.
+5. **UART Ping (Test A):** Open HTerm Serial Terminal at `115200` Baud and set the Port of your FPGA, configure HEX/ASCII send/receive, and transmit `A1 48 45 4C 4C 4F` or `S1HELLO` to initiate a visual ping to Node 1. Observe the returned response on the receiver window and continue testing with additional packets.
+6. **Image Stream (Test B):** Run `python fpga/uart_connect.py` on the PC after configuring your FPGA Port (requires `pyserial`, `numpy`, `matplotlib`). Press the button mapped to `btn_stream` on the FPGA to trigger the 4096-packet image burst and observe the reconstructed image rendered on the PC.
+7. To change the image, add an image in the [fpga](fpga) directory and run `python generate_mem.py <image-file-name>`, your `image_64x64_rgb.mem` will be updated. Rerun the FPGA flow, reprogram the FPGA, and execute Step 6 again.
 
-3. Optional: override project name while sourcing the script:
-
-    ```tcl
-    source create_project.tcl -tclargs --project_name noc_build
-    ```
-
-4. Open the created project, then run synthesis/implementation and generate the bitstream.
-5. Program the Artix-7 board from _Hardware Manager_.
-6. **UART Ping (Test A):** Open HTerm Serial Terminal at `115200` Baud, configure HEX send/receive, and transmit `A1 48 4F 57` to initiate a visual ping to Node 1. Observe the returned response on the receiver window and continue testing with additional packets.
-7. **Image Stream (Test B):** Run `python fpga/uart_connect.py` on the PC (requires `pyserial`, `numpy`, `matplotlib`). Press `btn_stream` on the FPGA to trigger the 4,096-packet image burst and observe the reconstructed image rendered on the PC.
-
-**Note:** If your local folder structure differs from the original export environment used to generate [create_project.tcl](create_project.tcl), regenerate the script from your local Vivado project (or update the source paths inside the script) before sourcing.
+⚠️**Note:** If your local folder structure differs from the repository structure, update the source paths inside the script [create_project.tcl](create_project.tcl) or manually add design, simulation, and constraints sources to the Vivado project.
