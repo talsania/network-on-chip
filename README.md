@@ -205,16 +205,18 @@ The design utilizes a comprehensive SystemVerilog verification suite. Verificati
 
 The design is deployed on a **Xilinx Artix-7 (xc7a100tcsg324-1)** FPGA.
 To demonstrate real-time capability, a custom **UART Protocol Bridge** was integrated into Node 0.
+
+### Test A: UART Ping (HTerm)
 1. The PC sends a binary payload via UART (`0xA1` to target Node 1).
 2. Node 0 packetizes it and routes it across the physical FPGA fabric.
 3. Node 1 extracts it, embeds its Node ID, and bounces it back.
 4. Node 0 ejects the packet, calculates latency, and transmits the payload + latency back to the PC via UART.
 
-**Hardware Test Output (HTerm)**
+**Hardware Test Output (HTerm) Hex & ASCII modes**   
 
-   https://github.com/user-attachments/assets/2d53cbb1-b452-48b2-8f13-7dbbb11c311a
+https://github.com/user-attachments/assets/b8d04f71-f63b-4fb9-8cbf-27621c76b4b4
 
-_The hex output `B1 48 4F 57 00 03` confirms successful traversal from Node 0 to Node 1 and back._ 
+_The hex output `B1 48 4F 57 00 03` confirms successful traversal from Node 0 to Node 1 and back._
 
 Here is what it represents:
 - `B1`: Response from Node 1
@@ -222,6 +224,15 @@ Here is what it represents:
 - `00 03`: Latency (in clock cycles)
 
 **Note:** As the custom UART module only parses hexadecimal or binary characters, _HTerm terminal software_ is used to demonstrate communication between the 4 nodes of the Network-on-Chip.
+
+### Test B: 64×64 RGB Image Stream
+A second top-level wrapper (`top_fpga_uart_stream_noc.sv`) extends the design with an embedded **64×64 RGB image ROM** (4,096 pixels, 24-bit color). Pressing `btn_stream` on the FPGA triggers a hardware burst that injects all 4,096 pixel packets into the NoC at maximum clock speed (100 MHz). Each packet carries a 12-bit pixel address and 24-bit RGB value. Node 3 echoes every packet back to Node 0, which serializes the recovered pixel data over UART. A companion Python script ([fpga/uart_connect.py](fpga/uart_connect.py)) reassembles the stream on the PC and renders the image using `matplotlib`.
+
+**Hardware Test Output - 64×64 Image reconstructed over NoC**
+
+https://github.com/user-attachments/assets/16d6b5c5-45cd-48cd-98c4-8c18223c7cf8
+
+_4,096 packets streamed through the physical NoC fabric and reconstructed pixel-perfect on the PC._
 
 ---
 
@@ -307,7 +318,7 @@ To evolve this design into a larger production-grade interconnect, the following
 
 4. Open the created project, then run synthesis/implementation and generate the bitstream.
 5. Program the Artix-7 board from _Hardware Manager_.
-6. Open HTerm Serial Terminal at `115200` Baud, configure HEX send/receive, and transmit `A1 48 4F 57` to initiate a visual ping to Node 1.
-7. Observe the returned response on the receiver window and continue testing with additional packets.
+6. **UART Ping (Test A):** Open HTerm Serial Terminal at `115200` Baud, configure HEX send/receive, and transmit `A1 48 4F 57` to initiate a visual ping to Node 1. Observe the returned response on the receiver window and continue testing with additional packets.
+7. **Image Stream (Test B):** Run `python fpga/uart_connect.py` on the PC (requires `pyserial`, `numpy`, `matplotlib`). Press `btn_stream` on the FPGA to trigger the 4,096-packet image burst and observe the reconstructed image rendered on the PC.
 
 **Note:** If your local folder structure differs from the original export environment used to generate [create_project.tcl](create_project.tcl), regenerate the script from your local Vivado project (or update the source paths inside the script) before sourcing.
